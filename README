@@ -1,0 +1,58 @@
+                      Devel::ObjectTracker  0.1
+
+ (Perl debug extension which tracks object life to help detect memory leaks)
+
+INTRODUCTION
+
+  This module grew out of investigations into memory leaks within large
+  applications. It creates output files which can help find where perl
+  objects are created or destroyed and being left behind in your programs
+  when you dont expect them to be.
+
+  See the POD documentation for complete details, features, and usage.
+
+PREREQUESITES
+
+  perl 5.00503 or above  
+
+INSTALLATION
+
+  Unpack the archive and change into subdirectory ObjectTracker-xxx
+  The type the following commands:
+	
+      perl Makefile.PL
+      make
+      make test
+      make install
+
+  The module is pure Perl and should install OK via the CPAN module.
+
+LEGAL ISSUES
+
+  Copyright (c) 2001 Siemens Business Services.  All rights reserved.
+  This program is free software; you can redistribute it and/or modify it
+  under the same terms as Perl itself.
+
+  Because this module is distributed free of charge, there is no warranty
+  for this module to the extent permitted by the applicable law.
+  This module is provided "as is" without warranty of any kind, either
+  expressed or implied, including but not limited to the implied
+  warranties of merchantability and fitness for a particular purpose.
+  The entire risk as to the quality and performance of this module rests
+  with you.  Should this module prove defective, you assume the cost
+  of all necessary servicing, repair or correction. In no event unless
+  required by the applicable law will the copyright holder, or any
+  other party who may modify and/or redistribute the program or this
+  module be liable to you for damages, including any general, special,
+  incidental or consequential damages arising out of the use or inability
+  to use this module (including but not limited to loss of data or data
+  being rendered inaccurate or losses sustained by you or third parties)
+  or a failure of this module to operate with any other program even
+  if such holder or other party has been advised of the possibility
+  of such damages
+
+  Siemens Business Services
+
+AUTHOR
+
+   John Clutterbuck, john.clutterbuck@sbs.siemens.co.uk

@@ -1,0 +1,10 @@
+README
+Changes
+MANIFEST
+Makefile.PL
+ObjectTracker.pm
+t/00_prepare.t
+t/01_basic_settings.t
+t/02_local_settings.t
+t/03_object_life.t
+t/04_check_results.t
