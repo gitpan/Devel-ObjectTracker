@@ -2,133 +2,11 @@
 
 # (C) Siemens Business Services 2001-2002
 
-package Devel::ObjectTracker;
+#core DB subs to track the activity
 
-use strict;
-
-#initialisation
-BEGIN {
-    $Devel::ObjectTracker::VERSION = '0.2';
-
-    %Devel::ObjectTracker::aObjects=();
-    @Devel::ObjectTracker::aDestroy_cache=();
-    %Devel::ObjectTracker::aDestroy_cache=();
-    $Devel::ObjectTracker::nDestroy_save=200;
-    $Devel::ObjectTracker::nSess = 0;
-    $Devel::ObjectTracker::oseq = 0;
-    $Devel::ObjectTracker::hide_ot = 1;
-    $Devel::ObjectTracker::enable = 1;
-
-    $Devel::ObjectTracker::verbose = 1;
-    $Devel::ObjectTracker::sub_match = '.';
-    $Devel::ObjectTracker::class_exclude = '(HASH|ARRAY|GLOB)';
-    $Devel::ObjectTracker::class_match = '.';
-    $Devel::ObjectTracker::delim = "\t";
-    $Devel::ObjectTracker::bol='';
-    $Devel::ObjectTracker::eol = "\n";
-    $Devel::ObjectTracker::log_file = 'ObjectTracker.log';
-    $Devel::ObjectTracker::details_file = 'ObjectTracker_details_<NN>.txt';
-    $Devel::ObjectTracker::stack_format = '<FILE>(<CALLSUB>) l=<LINE>';
-    $Devel::ObjectTracker::stack_delim = '; ';
-    $Devel::ObjectTracker::print_header = 1;
-    $Devel::ObjectTracker::stdout_format = " %-3d %-37s%-3s %-2d%-2s %s\n";
-
-    if (-f '.objecttracker') {
-	do '.objecttracker';
-    }
-
-
-}
-
-#start the session
-Devel::ObjectTracker::increment_session();
-print "ObjectTracker creating log file:$Devel::ObjectTracker::log_file sub_match=/$Devel::ObjectTracker::sub_match/ class_exclude=/$Devel::ObjectTracker::class_exclude/ class_match=/$Devel::ObjectTracker::class_match/ verbose=$Devel::ObjectTracker::verbose\n" if $Devel::ObjectTracker::verbose;
-
-open(Devel::ObjectTracker::OBINF,"> $Devel::ObjectTracker::log_file") or die "Cannot create $Devel::ObjectTracker::log_file Err=$!\n";
-print Devel::ObjectTracker::OBINF $Devel::ObjectTracker::bol.
-  join($Devel::ObjectTracker::delim, qw(ObjectNo DateTime Session Sub Source Position Class Ref Exists CrDateTime CrSession Stack CrStack)).$Devel::ObjectTracker::eol if $Devel::ObjectTracker::print_header; 
-
-sub increment_session {
-    ++$Devel::ObjectTracker::nSess;
-    print "ObjectTracker Session ID for future objects=$Devel::ObjectTracker::nSess\n" if $Devel::ObjectTracker::verbose;
-};
-
-sub output_details {
-    use strict;
-    my $file=$Devel::ObjectTracker::details_file;
-    $file =~ s/<[N]+>/$Devel::ObjectTracker::nSess/g;
-
-    print "ObjectTracker outputting details to:$file... " if $Devel::ObjectTracker::verbose;
-    my $nObjects;
-    if (open(OBRES,">$file")) {
-	print OBRES $Devel::ObjectTracker::bol.
-	  join($Devel::ObjectTracker::delim, qw(CrObjectNo CrDateTime CrSession CrSub CrSource CrPosition CrClass CrRef CrStack)).
-	    $Devel::ObjectTracker::eol if $Devel::ObjectTracker::print_header; 
-
-	#sort by creation order
-	my @aCurrent = sort {@{$Devel::ObjectTracker::aObjects{$a}}[0] <=> @{$Devel::ObjectTracker::aObjects{$b}}[0] } keys %Devel::ObjectTracker::aObjects;
-	foreach my $mem (@aCurrent) {
-	    $nObjects++;
-	    my ($oseq,$cid,$src,$sub,$class,$ref,$cstack,$cdtime,$pos) = @{$Devel::ObjectTracker::aObjects{$mem}};
-	    print OBRES $Devel::ObjectTracker::bol.
-	      join($Devel::ObjectTracker::delim,
-		   $oseq,$cdtime,$cid,$sub,$src,$pos,$class,$ref,$cstack).
-		     $Devel::ObjectTracker::eol; 
-	}
-	close (OBRES);
-	print "found $nObjects objects in existence\n" if $Devel::ObjectTracker::verbose;
-    }
-    else {
-	print STDERR "Cannot create details file:$file Err=$!\n";
-    }
-    #increment session for next time
-    increment_session();
-}
-
-sub _get_stack {
-    my (@main_stack,@stack,$bDestructor);
-
-    #get the stack
-    my $i=0;
-    while (my @cinfo = caller($i++)) {
-	push @main_stack,[@cinfo];
-    }
-   my $level;
-  STACK:
-    for ($level = 0; $level <= $#main_stack; $level++) {
-	my ($pack,$file,$line,$sub,$hasargs,$wantarray) = @{$main_stack[$level]};
-
-	$bDestructor = 1 if ($sub =~ /DESTROY$/);
-
-	my $callsub= $level < $#main_stack ? (@{$main_stack[$level+1]})[3] : 'main';
-	#print " caller=$level ".join(' ',($pack,$file,$line,$callsub,$sub,$hasargs,$wantarray))."\n" if ($Devel::ObjectTracker::verbose > 2);
-	unless ($Devel::ObjectTracker::hide_ot and $file =~ /ObjectTracker.pm$/) {
-	    #format the stack line
-	    my $stack_line=$Devel::ObjectTracker::stack_format;
-	    $stack_line =~ s/<LEVEL>/$level/gme;
-	    $stack_line =~ s/<PACK>/$pack/gme;
-	    $stack_line =~ s/<FILE>/$file/gme;
-	    $stack_line =~ s/<LINE>/$line/gme;
-	    $stack_line =~ s/<CALLSUB>/$callsub/gme;
-	    $stack_line =~ s/<SUBNAME>/$sub/gme;
-	    $stack_line =~ s/<HASARGS>/$hasargs/gme;
-	    $stack_line =~ s/<WANTARRAY>/$wantarray/gme;
-	    push @stack,$stack_line;
-	}
-    }
-    my $stack = join($Devel::ObjectTracker::stack_delim,@stack);
-    #print "stack=$stack\n" if ($Devel::ObjectTracker::verbose > 2);
-    return ($stack,$bDestructor);
-}
-
-#universal::DESTROY to catch objects without destructors
-package UNIVERSAL;
-sub DESTROY {
-}
-
-#core subs to track the activity
 package DB;
 sub DB {}
+
 sub sub {
 
     use vars '$sub';
@@ -191,7 +69,7 @@ sub sub {
 		my ($stack) = Devel::ObjectTracker::_get_stack();
 		
 		
-		print Devel::ObjectTracker::OBINF $Devel::ObjectTracker::bol.
+		print Devel::ObjectTracker::OTLOG $Devel::ObjectTracker::bol.
 		  join($Devel::ObjectTracker::delim,
 		       $oseq,$dtime,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$class,$ref,$ex,$cdtime,$cid,$stack,$cstack).
 			 $Devel::ObjectTracker::eol; 
@@ -270,7 +148,7 @@ sub sub {
 				}
 				
 				print sprintf($Devel::ObjectTracker::stdout_format,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$ex,$ref) if ($Devel::ObjectTracker::verbose > 1);
-				print Devel::ObjectTracker::OBINF $Devel::ObjectTracker::bol.
+				print Devel::ObjectTracker::OTLOG $Devel::ObjectTracker::bol.
 				  join($Devel::ObjectTracker::delim,
 				       $oseq,$dtime,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$class,$ref,$ex,'','',$stack,'').
 					 $Devel::ObjectTracker::eol; 
@@ -308,7 +186,7 @@ sub sub {
 				$Devel::ObjectTracker::aObjects{$mem} = [$oseq,$Devel::ObjectTracker::nSess,$src,$subname,$class,$ref,$stack,$dtime,$pos];
 			    }
 			    print sprintf($Devel::ObjectTracker::stdout_format,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$ex,$ref) if ($Devel::ObjectTracker::verbose > 1);
-			    print Devel::ObjectTracker::OBINF $Devel::ObjectTracker::bol.
+			    print Devel::ObjectTracker::OTLOG $Devel::ObjectTracker::bol.
 			      join($Devel::ObjectTracker::delim,
 				   $oseq,$dtime,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$class,$ref,$ex,'','',$stack,'').
 				     $Devel::ObjectTracker::eol; 
@@ -326,6 +204,153 @@ sub sub {
 	return @aRet;
     }
 }
+
+#package distinct subs
+package Devel::ObjectTracker;
+
+use strict;
+
+#initialisation
+BEGIN {
+    $Devel::ObjectTracker::VERSION = '0.4';
+
+    %Devel::ObjectTracker::aObjects=();
+    @Devel::ObjectTracker::aDestroy_cache=();
+    %Devel::ObjectTracker::aDestroy_cache=();
+    $Devel::ObjectTracker::nDestroy_save=200;
+    $Devel::ObjectTracker::nSess = 0;
+    $Devel::ObjectTracker::oseq = 0;
+    $Devel::ObjectTracker::hide_ot = 1;
+    $Devel::ObjectTracker::enable = 1;
+
+    $Devel::ObjectTracker::verbose = 1;
+    $Devel::ObjectTracker::sub_match = '.';
+    $Devel::ObjectTracker::class_exclude = '(HASH|ARRAY|GLOB)';
+    $Devel::ObjectTracker::class_match = '.';
+    $Devel::ObjectTracker::delim = "\t";
+    $Devel::ObjectTracker::bol='';
+    $Devel::ObjectTracker::eol = "\n";
+    $Devel::ObjectTracker::log_file = 'ObjectTracker.log';
+    $Devel::ObjectTracker::details_file = 'ObjectTracker_details_<NN>.txt';
+    $Devel::ObjectTracker::stack_format = '<FILE>(<CALLSUB>) l=<LINE>';
+    $Devel::ObjectTracker::stack_delim = '; ';
+    $Devel::ObjectTracker::print_header = 1;
+    $Devel::ObjectTracker::stdout_format = " %-3d %-37s%-3s %-2d%-2s %s\n";
+
+    if (-f '.objecttracker') {
+	do '.objecttracker';
+    }
+
+
+}
+
+#start the session
+Devel::ObjectTracker::increment_session();
+print "ObjectTracker creating log file:$Devel::ObjectTracker::log_file sub_match=/$Devel::ObjectTracker::sub_match/ class_exclude=/$Devel::ObjectTracker::class_exclude/ class_match=/$Devel::ObjectTracker::class_match/ verbose=$Devel::ObjectTracker::verbose\n" if $Devel::ObjectTracker::verbose;
+
+open(Devel::ObjectTracker::OTLOG,"> $Devel::ObjectTracker::log_file") or die "Cannot create $Devel::ObjectTracker::log_file Err=$!\n";
+print Devel::ObjectTracker::OTLOG $Devel::ObjectTracker::bol.
+  join($Devel::ObjectTracker::delim, qw(ObjectNo DateTime Session Sub Source Position Class Ref Exists CrDateTime CrSession Stack CrStack)).$Devel::ObjectTracker::eol if $Devel::ObjectTracker::print_header; 
+
+sub increment_session {
+    ++$Devel::ObjectTracker::nSess;
+    print "ObjectTracker Session ID for future objects=$Devel::ObjectTracker::nSess\n" if $Devel::ObjectTracker::verbose;
+};
+
+sub output_details {
+    use strict;
+    my $msg = shift;
+
+    my $file=$Devel::ObjectTracker::details_file;
+    $file =~ s/<[N]+>/$Devel::ObjectTracker::nSess/g;
+
+    print "ObjectTracker outputting details to:$file... " if $Devel::ObjectTracker::verbose;
+    my $nObjects;
+    if (open(OBRES,">$file")) {
+	print OBRES $Devel::ObjectTracker::bol.
+	  join($Devel::ObjectTracker::delim, qw(CrObjectNo CrDateTime CrSession CrSub CrSource CrPosition CrClass CrRef CrStack)).
+	    $Devel::ObjectTracker::eol if $Devel::ObjectTracker::print_header; 
+
+	#sort by creation order
+	my @aCurrent = sort {@{$Devel::ObjectTracker::aObjects{$a}}[0] <=> @{$Devel::ObjectTracker::aObjects{$b}}[0] } keys %Devel::ObjectTracker::aObjects;
+	foreach my $mem (@aCurrent) {
+	    $nObjects++;
+	    my ($oseq,$cid,$src,$sub,$class,$ref,$cstack,$cdtime,$pos) = @{$Devel::ObjectTracker::aObjects{$mem}};
+	    print OBRES $Devel::ObjectTracker::bol.
+	      join($Devel::ObjectTracker::delim,
+		   $oseq,$cdtime,$cid,$sub,$src,$pos,$class,$ref,$cstack).
+		     $Devel::ObjectTracker::eol; 
+	}
+	close (OBRES);
+	print "found $nObjects objects in existence\n" if $Devel::ObjectTracker::verbose;
+    }
+    else {
+	print STDERR "Cannot create details file:$file Err=$!\n";
+    }
+    log_checkpoint($msg) if $msg;
+
+    #increment session for next time
+    increment_session();
+}
+
+sub log_checkpoint {
+    my $msg = shift;
+
+    #compute the stack
+    my ($stack) = Devel::ObjectTracker::_get_stack();
+    
+    my ($sec,$min,$hour,$mday,$mon,$year) = localtime;
+    my $dtime = sprintf('%4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d',$year+1900,$mon+1,$mday,$hour,$min,$sec);
+
+    print "ObjectTracker checkpoint msg=$msg\n" if $Devel::ObjectTracker::verbose;
+    print Devel::ObjectTracker::OTLOG $Devel::ObjectTracker::bol.
+      join($Devel::ObjectTracker::delim,
+	   '*checkpoint*',$dtime,$Devel::ObjectTracker::nSess,$msg,'','','','','','','',$stack,'').
+	     $Devel::ObjectTracker::eol; 
+    return 1;
+}
+
+sub _get_stack {
+    my (@main_stack,@stack,$bDestructor);
+
+    #get the stack
+    my $i=0;
+    while (my @cinfo = caller($i++)) {
+	push @main_stack,[@cinfo];
+    }
+   my $level;
+  STACK:
+    for ($level = 0; $level <= $#main_stack; $level++) {
+	my ($pack,$file,$line,$sub,$hasargs,$wantarray) = @{$main_stack[$level]};
+
+	$bDestructor = 1 if ($sub =~ /DESTROY$/);
+
+	my $callsub= $level < $#main_stack ? (@{$main_stack[$level+1]})[3] : 'main';
+	#print " caller=$level ".join(' ',($pack,$file,$line,$callsub,$sub,$hasargs,$wantarray))."\n" if ($Devel::ObjectTracker::verbose > 2);
+	unless ($Devel::ObjectTracker::hide_ot and $file =~ /ObjectTracker.pm$/) {
+	    #format the stack line
+	    my $stack_line=$Devel::ObjectTracker::stack_format;
+	    $stack_line =~ s/<LEVEL>/$level/gme;
+	    $stack_line =~ s/<PACK>/$pack/gme;
+	    $stack_line =~ s/<FILE>/$file/gme;
+	    $stack_line =~ s/<LINE>/$line/gme;
+	    $stack_line =~ s/<CALLSUB>/$callsub/gme;
+	    $stack_line =~ s/<SUBNAME>/$sub/gme;
+	    $stack_line =~ s/<HASARGS>/$hasargs/gme;
+	    $stack_line =~ s/<WANTARRAY>/$wantarray/gme;
+	    push @stack,$stack_line;
+	}
+    }
+    my $stack = join($Devel::ObjectTracker::stack_delim,@stack);
+    #print "stack=$stack\n" if ($Devel::ObjectTracker::verbose > 2);
+    return ($stack,$bDestructor);
+}
+
+#universal::DESTROY to catch objects without destructors
+package UNIVERSAL;
+sub DESTROY {
+}
+
 
 __END__
 
@@ -545,6 +570,10 @@ This function increments the session number after each call (via B<increment_ses
 This should be called at suitable points in your program and the resultant files
 can be checked to see if there are any objects which shouldn't still be in existence.
 It will show the date/time, session ID and the call stack when the object was created.
+
+=head2 log_checkpoint()
+
+This subroutine should be called at suitable points in your program to record a checkpoint in the log file.
 
 =head2 increment_session()
 

@@ -1,5 +1,7 @@
 #!perl
 
+#pepare files for other tests
+
 print "1..1\n" ;
 
 #clear out any files that could exist and upset tests

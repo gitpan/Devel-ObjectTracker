@@ -1,4 +1,4 @@
-                      Devel::ObjectTracker  0.2
+                      Devel::ObjectTracker  0.4
 
  (Perl debug extension which tracks object life to help detect memory leaks)
 
