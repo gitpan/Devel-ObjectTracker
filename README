@@ -1,4 +1,4 @@
-                      Devel::ObjectTracker  0.1
+                      Devel::ObjectTracker  0.2
 
  (Perl debug extension which tracks object life to help detect memory leaks)
 
@@ -29,7 +29,7 @@ INSTALLATION
 
 LEGAL ISSUES
 
-  Copyright (c) 2001 Siemens Business Services.  All rights reserved.
+  Copyright (c) 2001-2002 Siemens Business Services.  All rights reserved.
   This program is free software; you can redistribute it and/or modify it
   under the same terms as Perl itself.
 

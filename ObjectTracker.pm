@@ -1,6 +1,6 @@
 #!perl
 
-# (C) Siemens Business Services 2001
+# (C) Siemens Business Services 2001-2002
 
 package Devel::ObjectTracker;
 
@@ -8,9 +8,12 @@ use strict;
 
 #initialisation
 BEGIN {
-    $Devel::ObjectTracker::VERSION = '0.1';
+    $Devel::ObjectTracker::VERSION = '0.2';
 
     %Devel::ObjectTracker::aObjects=();
+    @Devel::ObjectTracker::aDestroy_cache=();
+    %Devel::ObjectTracker::aDestroy_cache=();
+    $Devel::ObjectTracker::nDestroy_save=200;
     $Devel::ObjectTracker::nSess = 0;
     $Devel::ObjectTracker::oseq = 0;
     $Devel::ObjectTracker::hide_ot = 1;
@@ -94,10 +97,12 @@ sub _get_stack {
   STACK:
     for ($level = 0; $level <= $#main_stack; $level++) {
 	my ($pack,$file,$line,$sub,$hasargs,$wantarray) = @{$main_stack[$level]};
+
+	$bDestructor = 1 if ($sub =~ /DESTROY$/);
+
 	my $callsub= $level < $#main_stack ? (@{$main_stack[$level+1]})[3] : 'main';
 	#print " caller=$level ".join(' ',($pack,$file,$line,$callsub,$sub,$hasargs,$wantarray))."\n" if ($Devel::ObjectTracker::verbose > 2);
 	unless ($Devel::ObjectTracker::hide_ot and $file =~ /ObjectTracker.pm$/) {
-	    $bDestructor = 1 if ($sub =~ /DESTROY$/);
 	    #format the stack line
 	    my $stack_line=$Devel::ObjectTracker::stack_format;
 	    $stack_line =~ s/<LEVEL>/$level/gme;
@@ -167,7 +172,17 @@ sub sub {
 		if (exists $Devel::ObjectTracker::aObjects{$mem} ) {
 		    $ex = 'Y';
 		    ($oseq,$cid,$csrc,$osub,$class,$cref,$cstack,$cdtime,$cpos) = @{$Devel::ObjectTracker::aObjects{$mem}};
+		    #delete from current objects but save in buffer
 		    delete $Devel::ObjectTracker::aObjects{$mem};
+
+		    #stick this onto the beginning and remember it
+		    splice (@Devel::ObjectTracker::aDestroy_cache,0,0,$mem);
+		    $Devel::ObjectTracker::aDestroy_cache{$mem} = $dtime;
+
+		    #trim old stuff out of cache
+		    map {delete $Devel::ObjectTracker::aDestroy_cache{$_} } splice (@Devel::ObjectTracker::aDestroy_cache,$Devel::ObjectTracker::nDestroy_save,$Devel::ObjectTracker::nDestroy_save);
+
+		    
 		}
 		else {
 		    $ex = 'N';
@@ -233,25 +248,33 @@ sub sub {
 			$src='Arg';
 			$class=ref $val;
 			
-		        #save the details
+			#check for valid ememory reference that should be tracked
 			if ($mem and $class and $class !~ /$Devel::ObjectTracker::class_exclude/
-			    and $class =~ /$Devel::ObjectTracker::class_match/
-			    and not exists $Devel::ObjectTracker::aObjects{$mem} ) {
-			    #get the stack details
-			    ($stack,$bDestructor) = Devel::ObjectTracker::_get_stack() unless $stack;
-			    my $oseq;
-			    if ( $bDestructor ) {
-				$ex='de';
-			    } else {
-				#add the new object to the hash
-				$oseq = ++$Devel::ObjectTracker::oseq;
-				$Devel::ObjectTracker::aObjects{$mem} = [$oseq,$Devel::ObjectTracker::nSess,$src,$subname,$class,$ref,$stack,$dtime,$pos];
+			    and $class =~ /$Devel::ObjectTracker::class_match/) {
+
+			    #check if this is a new unseen reference
+			    if ( not exists $Devel::ObjectTracker::aObjects{$mem} 
+				 and not exists $Devel::ObjectTracker::aDestroy_cache{$mem}
+			       ) {
+				
+				#get the stack details
+				($stack,$bDestructor) = Devel::ObjectTracker::_get_stack() unless $stack;
+				my $oseq;
+				#check if destructor
+				if ( $bDestructor ) {
+				    $ex='de';
+				} else {
+				    #add the new object to the hash
+				    $oseq = ++$Devel::ObjectTracker::oseq;
+				    $Devel::ObjectTracker::aObjects{$mem} = [$oseq,$Devel::ObjectTracker::nSess,$src,$subname,$class,$ref,$stack,$dtime,$pos];
+				}
+				
+				print sprintf($Devel::ObjectTracker::stdout_format,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$ex,$ref) if ($Devel::ObjectTracker::verbose > 1);
+				print Devel::ObjectTracker::OBINF $Devel::ObjectTracker::bol.
+				  join($Devel::ObjectTracker::delim,
+				       $oseq,$dtime,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$class,$ref,$ex,'','',$stack,'').
+					 $Devel::ObjectTracker::eol; 
 			    }
-			    print sprintf($Devel::ObjectTracker::stdout_format,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$ex,$ref) if ($Devel::ObjectTracker::verbose > 1);
-			    print Devel::ObjectTracker::OBINF $Devel::ObjectTracker::bol.
-			      join($Devel::ObjectTracker::delim,
-				   $oseq,$dtime,$Devel::ObjectTracker::nSess,$subname,$src,$pos,$class,$ref,$ex,'','',$stack,'').
-				     $Devel::ObjectTracker::eol; 
 			}
 		    }
 		}
@@ -689,7 +712,7 @@ I think it is more accurate now. You need to validate the results yourself to be
 
 If the sub matches /DESTROY$/ it assumes the first argument is the object being destroyed.
 
-There is no record kept of whether memory references are reused. It is possible that refs/objects are seen again
+There is a limited cache kept of deleted objects. It is possible that refs/objects are seen again
 in subroutines called from within a destructor. To help overcome this the field B<Exists> contains B<de> if a destructor
 is seen in the call stack.
 
@@ -697,7 +720,7 @@ Occasionally it produces 'Attempt to free unreferenced scalar' messages but thes
 
 =head1 COPYRIGHT
 
-Copyright (c) 2001 Siemens Business Services.  All rights reserved.
+Copyright (c) 2001-2002 Siemens Business Services.  All rights reserved.
 
 This module is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

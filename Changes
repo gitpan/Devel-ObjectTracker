@@ -3,3 +3,6 @@ Revision history for Perl extension Devel::ObjectTracker.
 0.1  Wed Dec 12 09:24:17 GMT 2001
 	- First Public Release
 
+0.2  Wed Jan 6 15:12:47 GMT 2002
+	- Fixed bug in the destructor detection in the call stack 
+	- Added cache of destroyed objects to stop them being reported as existing
